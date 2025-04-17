@@ -18,7 +18,7 @@ WALK_ACCEL = 0.8
 DASH_SPEED = 20
 
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("SANABI Grapple - Direction Fix & Upward Pull")
+pygame.display.set_caption("SANABI Grapple - With Trajectory Guide")
 clock = pygame.time.Clock()
 
 # Colors
@@ -28,6 +28,7 @@ BLUE = (100, 100, 255)
 DARK_GREY = (30, 30, 30)
 GREEN = (0, 200, 50)
 RED = (255, 50, 50)
+YELLOW = (255, 255, 0)
 
 tilemap = [
     "..............................",
@@ -36,19 +37,19 @@ tilemap = [
     "..............................",
     "..............................",
     "..............................",
+    ".CCCCC........................",
     "..............................",
-    "..............W...............",
-    "..............W...............",
-    "..............W...............",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
-    ".....W.....................W..",
+    "..............................",
+    "..................CCCCC.......",
+    "..............................",
+    "........CCC...................",
+    "..............................",
+    ".................CCC..........",
+    "..............................",
+    "..............CCC.............",
+    "..............................",
+    "..............................",
+    "..............................",
     "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
 ]
 
@@ -70,6 +71,17 @@ def draw_map(surface, map_data, offset):
             color = GREY if tile == 'W' else BLUE if tile == 'C' else DARK_GREY
             rect = pygame.Rect(x * TILE_SIZE - offset.x, y * TILE_SIZE - offset.y, TILE_SIZE, TILE_SIZE)
             pygame.draw.rect(surface, color, rect)
+
+def draw_dotted_line(surface, color, start, end, width=2, dash_length=10):
+    direction = end - start
+    length = direction.length()
+    if length == 0:
+        return
+    direction.normalize_ip()
+    for i in range(0, int(length), dash_length * 2):
+        start_pos = start + direction * i
+        end_pos = start + direction * (i + dash_length)
+        pygame.draw.line(surface, color, start_pos, end_pos, width)
 
 class Player:
     def __init__(self, x, y):
@@ -104,7 +116,7 @@ class Player:
             if direction.length() > 5:
                 direction.scale_to_length(GRAPPLE_PULL_SPEED)
                 self.vel = direction
-                self.vel.y = -21
+                self.vel.y = -14
             else:
                 self.pull_to_grapple = False
         elif self.recalling:
@@ -177,32 +189,30 @@ camera = pygame.Vector2(0, 0)
 running = True
 while running:
     dt = clock.tick(FPS)
+    mouse_pos = pygame.mouse.get_pos()
+    world_mouse = pygame.Vector2(mouse_pos) + camera
+    click_box = pygame.Rect(world_mouse.x - 4, world_mouse.y - 4, 8, 8)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            mx, my = pygame.mouse.get_pos()
-            world_pos = pygame.Vector2(mx, my) + camera
-
-            if any(wall.collidepoint(world_pos) for wall in walls):
+            if any(wall.collidepoint(world_mouse) for wall in walls):
                 continue
 
-            click_box = pygame.Rect(world_pos.x - 2, world_pos.y - 2, 4, 4)
             valid = False
             for wall in walls + ceilings:
-                # Only attach to wall surface facing the player
                 if wall.inflate(16, 16).colliderect(click_box):
-                    if player.facing == 1 and world_pos.x > wall.centerx:
+                    if player.facing == 1 and world_mouse.x > wall.centerx:
                         valid = True
                         break
-                    elif player.facing == -1 and world_pos.x < wall.centerx:
+                    elif player.facing == -1 and world_mouse.x < wall.centerx:
                         valid = True
                         break
 
-            if valid and player.pos.distance_to(world_pos) <= MAX_GRAPPLE_DISTANCE:
-                player.start_grapple(world_pos)
+            if valid and player.pos.distance_to(world_mouse) <= MAX_GRAPPLE_DISTANCE:
+                player.start_grapple(world_mouse)
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_r:
@@ -225,6 +235,9 @@ while running:
     screen.fill("black")
     draw_map(screen, tilemap, camera)
     player.draw(screen, camera)
+    # draw prediction line and hitbox
+    draw_dotted_line(screen, YELLOW, player.pos - camera, world_mouse - camera)
+    pygame.draw.rect(screen, RED, click_box.move(-camera.x, -camera.y), 1)
 
     font = pygame.font.SysFont(None, 24)
     screen.blit(font.render("WASD / Click: Grapple / F: Pull+Recall / R: Release / Shift: Dash", True, WHITE), (10, 10))
