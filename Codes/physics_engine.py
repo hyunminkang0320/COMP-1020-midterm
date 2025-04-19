@@ -87,11 +87,10 @@ class Player:
         self.color = GREEN
         self.on_ground = False
         self.facing = 1
+        self.grappling_enabled = True  # NEW
         self.grappling = False
         self.grapple_point = pygame.Vector2()
         self.pull_to_grapple = False
-        self.recalling = False
-        self.original_pos = pygame.Vector2()
         self.hook_pos = None
         self.hook_dir = None
         self.hook_flying = False
@@ -106,36 +105,26 @@ class Player:
     def update(self, walls, ceilings):
         self.vel.y += GRAVITY
 
-        if self.hook_flying and self.hook_pos:
-            self.hook_pos += self.hook_dir * HOOK_SHOOT_SPEED
-            for wall in walls + ceilings:
-                if wall.collidepoint(self.hook_pos):
-                    self.grappling = True
-                    self.grapple_point = self.hook_pos
+        if self.grappling_enabled:
+            if self.hook_flying and self.hook_pos:
+                self.hook_pos += self.hook_dir * HOOK_SHOOT_SPEED
+                for wall in walls + ceilings:
+                    if wall.collidepoint(self.hook_pos):
+                        self.grappling = True
+                        self.grapple_point = self.hook_pos
+                        self.hook_flying = False
+                        break
+                if self.pos.distance_to(self.hook_pos) > MAX_GRAPPLE_DISTANCE:
                     self.hook_flying = False
-                    break
-            if self.pos.distance_to(self.hook_pos) > MAX_GRAPPLE_DISTANCE:
-                self.hook_flying = False
 
-        if self.grappling and self.pull_to_grapple:
-            direction = self.grapple_point - self.pos
-            if direction.length() > 5:
-                direction.scale_to_length(GRAPPLE_PULL_SPEED)
-                self.vel = direction
-                self.vel.y -= 5
-            else:
-                self.pull_to_grapple = False
-
-        elif self.recalling:
-            direction = self.original_pos - self.pos
-            if direction.length() > 5:
-                direction.scale_to_length(GRAPPLE_PULL_SPEED)
-                self.vel = direction
-            else:
-                self.recalling = False
-                self.vel = pygame.Vector2(0, 0)
-                self.pos.y -= 3
-                self.on_ground = True
+            if self.grappling and self.pull_to_grapple:
+                direction = self.grapple_point - self.pos
+                if direction.length() > 5:
+                    direction.scale_to_length(GRAPPLE_PULL_SPEED)
+                    self.vel = direction
+                    self.vel.y -= 5
+                else:
+                    self.pull_to_grapple = False
 
         self.pos += self.vel
         self.on_ground = False
@@ -162,27 +151,31 @@ class Player:
         return pygame.Rect(int(self.pos.x - self.size / 2), int(self.pos.y - self.size / 2), self.size, self.size)
 
     def shoot_grapple(self, target):
+        if not self.grappling_enabled:
+            return
         self.hook_pos = self.pos.copy()
         self.hook_dir = (target - self.pos).normalize()
         self.hook_flying = True
         self.grappling = False
         self.pull_to_grapple = False
-        self.recalling = False
 
     def release_grapple(self):
         self.grappling = False
         self.pull_to_grapple = False
-        self.recalling = False
         self.hook_flying = False
 
-    def pull(self):
+    def toggle_pull(self):
+        if not self.grappling_enabled:
+            return
         if self.grappling:
             if self.pull_to_grapple:
-                self.recalling = True
-                self.pull_to_grapple = False
+                self.release_grapple()
             else:
-                self.original_pos = self.pos.copy()
                 self.pull_to_grapple = True
+
+    def toggle_grappling_mode(self):
+        self.grappling_enabled = not self.grappling_enabled
+        self.release_grapple()
 
     def draw(self, surface, offset, mouse_pos_world):
         pygame.draw.rect(surface, self.color, self.rect().move(-offset.x, -offset.y))
@@ -192,12 +185,13 @@ class Player:
         if self.hook_flying:
             pygame.draw.line(surface, YELLOW, self.pos - offset, self.hook_pos - offset, 2)
             pygame.draw.circle(surface, YELLOW, (int(self.hook_pos.x - offset.x), int(self.hook_pos.y - offset.y)), 4)
-        elif not self.grappling:
+        elif not self.grappling and self.grappling_enabled:
             draw_dotted_line(surface, WHITE, self.pos - offset, mouse_pos_world - offset, 1, 6)
 
 player = Player(64, 500)
 walls, ceilings = generate_walls(tilemap)
 camera = pygame.Vector2(0, 0)
+space_pressed_last_frame = False
 
 running = True
 while running:
@@ -215,7 +209,7 @@ while running:
             if event.key == pygame.K_r:
                 player.release_grapple()
             if event.key == pygame.K_f:
-                player.pull()
+                player.toggle_grappling_mode()
             if event.key == pygame.K_LSHIFT:
                 direction = -1 if pygame.key.get_pressed()[pygame.K_a] else 1
                 player.vel = pygame.Vector2(direction * DASH_SPEED, 0)
@@ -223,6 +217,11 @@ while running:
     keys = pygame.key.get_pressed()
     player.move(keys)
     player.update(walls, ceilings)
+
+    space_pressed = keys[pygame.K_SPACE]
+    if space_pressed and not space_pressed_last_frame:
+        player.toggle_pull()
+    space_pressed_last_frame = space_pressed
 
     camera.x = player.pos.x - SCREEN_WIDTH // 2
     camera.y = player.pos.y - SCREEN_HEIGHT // 2
@@ -235,7 +234,8 @@ while running:
     pygame.draw.rect(screen, RED, click_box.move(-camera.x, -camera.y), 1)
 
     font = pygame.font.SysFont(None, 24)
-    screen.blit(font.render("WASD / Click: Shoot Hook / F: Pull+Recall / R: Release / Shift: Dash", True, WHITE), (10, 10))
+    mode_text = "ON" if player.grappling_enabled else "OFF"
+    screen.blit(font.render(f"WASD / Click: Hook / SPACE: Pull+Release / F: Grapple Mode ({mode_text}) / R: Cancel / Shift: Dash", True, WHITE), (10, 10))
 
     pygame.display.flip()
 
