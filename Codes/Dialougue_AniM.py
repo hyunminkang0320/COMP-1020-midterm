@@ -31,6 +31,9 @@ character_portrait = pygame.transform.scale(character_portrait, (500, 600))  # r
 
 # Dialogue State
 dialogue_active = False
+dialogue_start_time = 0
+illustration_alpha = 0
+FADE_DURATION = 200
 font = pygame.font.SysFont(None, 36)  # You already have a font for text
 
 
@@ -42,6 +45,15 @@ bg2 = pygame.transform.scale(pygame.image.load("bg_2 (z -2).png").convert_alpha(
 bg1 = pygame.transform.scale(pygame.image.load("bg_1 (z -1).png").convert_alpha(), (BG_WIDTH, BG_HEIGHT))
 middleground = pygame.transform.scale(pygame.image.load("middleground (z 0).png").convert_alpha(), (BG_WIDTH, BG_HEIGHT))
 middleplus = pygame.transform.scale(pygame.image.load("middleplus (z 1).png").convert_alpha(), (BG_WIDTH, BG_HEIGHT))
+
+far_clouds = pygame.transform.scale(pygame.image.load("far-clouds.png").convert_alpha(), (1280, 960))
+far_mountains = pygame.transform.scale(pygame.image.load("far-mountains.png").convert_alpha(), (1280, 960))
+close_mountains = pygame.transform.scale(pygame.image.load("mountains.png").convert_alpha(), (1280, 960))
+near_clouds= pygame.transform.scale(pygame.image.load("near-clouds.png").convert_alpha(), (1280, 960))
+sky_near = pygame.transform.scale(pygame.image.load("sky.png").convert_alpha(), (1280, 960))
+trees = pygame.transform.scale(pygame.image.load("trees.png").convert_alpha(), (1280, 960))
+
+
 
 # Load animations
 idle_frames = [
@@ -118,36 +130,59 @@ def draw_map(surface, map_data, offset):
             rect = pygame.Rect(x * TILE_SIZE - offset.x, y * TILE_SIZE - offset.y, TILE_SIZE, TILE_SIZE)
             pygame.draw.rect(surface, color, rect)
 
+# def draw_parallax(surface, camera):
+#     # Gradient (fixed)
+#     surface.blit(gradient, (0, 0))
+#
+#     # Mountains (slowest)
+#     mount_x = (-camera.x * 0.1) % BG_WIDTH
+#     surface.blit(mountains, (mount_x - BG_WIDTH, 200))
+#     surface.blit(mountains, (mount_x, 200))
+#
+#     # Sky treesd
+#     sky_x = (-camera.x * 0.2) % BG_WIDTH
+#     surface.blit(sky, (sky_x - BG_WIDTH, 200))
+#     surface.blit(sky, (sky_x, 200))
+#
+#     # Mid backgrounds
+#     bg2_x = (-camera.x * 0.4) % BG_WIDTH
+#     surface.blit(bg2, (bg2_x - BG_WIDTH, 140))
+#     surface.blit(bg2, (bg2_x, 140))
+#
+#     bg1_x = (-camera.x * 0.6) % BG_WIDTH
+#     surface.blit(bg1, (bg1_x - BG_WIDTH, 150))
+#     surface.blit(bg1, (bg1_x, 150))
+#
+#     middleground_x = (-camera.x * 0.8) % BG_WIDTH
+#     surface.blit(middleground, (middleground_x - BG_WIDTH, 200))
+#     surface.blit(middleground, (middleground_x, 200))
+#
+#     middleplus_x = (-camera.x * 1.0) % BG_WIDTH
+#     surface.blit(middleplus, (middleplus_x - BG_WIDTH, 150))
+#     surface.blit(middleplus, (middleplus_x, 150))
+
 def draw_parallax(surface, camera):
     # Gradient (fixed)
-    surface.blit(gradient, (0, 0))
+    surface.blit(sky_near, (0, 0))
 
     # Mountains (slowest)
     mount_x = (-camera.x * 0.1) % BG_WIDTH
-    surface.blit(mountains, (mount_x - BG_WIDTH, 200))
-    surface.blit(mountains, (mount_x, 200))
+    surface.blit(far_clouds, (mount_x - BG_WIDTH, -50))
+    surface.blit(far_clouds, (mount_x, -50))
 
     # Sky trees
     sky_x = (-camera.x * 0.2) % BG_WIDTH
-    surface.blit(sky, (sky_x - BG_WIDTH, 200))
-    surface.blit(sky, (sky_x, 200))
+    surface.blit(near_clouds, (sky_x - BG_WIDTH, -50))
+    surface.blit(near_clouds, (sky_x, -50))
 
     # Mid backgrounds
     bg2_x = (-camera.x * 0.4) % BG_WIDTH
-    surface.blit(bg2, (bg2_x - BG_WIDTH, 140))
-    surface.blit(bg2, (bg2_x, 140))
+    surface.blit(close_mountains, (bg2_x - BG_WIDTH, -50))
+    surface.blit(close_mountains, (bg2_x, -50))
 
     bg1_x = (-camera.x * 0.6) % BG_WIDTH
-    surface.blit(bg1, (bg1_x - BG_WIDTH, 150))
-    surface.blit(bg1, (bg1_x, 150))
-
-    middleground_x = (-camera.x * 0.8) % BG_WIDTH
-    surface.blit(middleground, (middleground_x - BG_WIDTH, 200))
-    surface.blit(middleground, (middleground_x, 200))
-
-    middleplus_x = (-camera.x * 1.0) % BG_WIDTH
-    surface.blit(middleplus, (middleplus_x - BG_WIDTH, 150))
-    surface.blit(middleplus, (middleplus_x, 150))
+    surface.blit(trees, (bg1_x - BG_WIDTH, -100))
+    surface.blit(trees, (bg1_x, -100))
 
 class Player:
     def __init__(self, x, y):
@@ -461,6 +496,8 @@ while running:
                 else:
                     if agisss.collider.colliderect(player.rect()):
                         dialogue_active = True  # Open dialogue if close enough
+                        dialogue_start_time = pygame.time.get_ticks()
+                        illustration_alpha = 0
 
     keys = pygame.key.get_pressed()
     if not dialogue_active:
@@ -485,13 +522,20 @@ while running:
     agisss.update()
     agisss.draw(screen, camera)
     player.draw(screen, camera, world_mouse)
+
     if dialogue_active:
+        if dialogue_active:
+            elapsed = pygame.time.get_ticks() - dialogue_start_time
+            progress = min(elapsed / FADE_DURATION, 1)  # Clamp to 1
+            illustration_alpha = int(255 * progress)  # Fade to 255
+
         # Semi-transparent black rectangle
         dialogue_rect = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT * 2 // 5), pygame.SRCALPHA)
         dialogue_rect.fill((0, 0, 0, 180))  # black with some transparency
         screen.blit(dialogue_rect, (0, SCREEN_HEIGHT - SCREEN_HEIGHT * 2 // 5))
 
         # Character portraitad
+        character_portrait.set_alpha(illustration_alpha)
         screen.blit(character_portrait, (500, SCREEN_HEIGHT - character_portrait.get_height()))
 
         # Text
